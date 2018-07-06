@@ -1164,7 +1164,7 @@ for(out in unique(m_df$sccan_out)){
     png(paste("BP_RMSE_",m,"_",out,".png",sep=""),units="in",width=20,height=12,pointsize=18,res=300)
     
     bp =    boxplot(m_df$rmse[m_df$method_ID==m & m_df$sccan_out==out]~m_df$tdap[m_df$method_ID==m & m_df$sccan_out==out],
-                    ylim = c(0,max(m_df$rmse)),
+                    ylim = c(0,max(m_df$rmse[m_df$sccan_out==out])),
                     ylab = paste(lab_df$yl[lab_df$sccan==out]," Error ",lab_df$ul[lab_df$sccan==out],sep=""),
                     xlab = "Season Day of Prediction Start (DAP)",
                     plot = T,
