@@ -1348,6 +1348,21 @@ dev.off()
   
 }
                                                
+                                               
+                                               
+m2_df$sel_yr_dif = m2_df$pyr - m2_df$sel_yr
+m3_df$sel_yr_dif = m3_df$pyr - m3_df$sel_yr
+m4_df$sel_yr_dif = m4_df$pyr - (m4_df$sel_yr1 + m4_df$sel_yr2) / 2
+
+sel_year = rbind(m2_df[,c("method_ID","sel_yr_dif")],m3_df[,c("method_ID","sel_yr_dif")],m4_df[,c("method_ID","sel_yr_dif")])
+png(paste("Sel_yr.png",sep=""),units="in",width=12,height=12,pointsize=18,res=300)
+boxplot(sel_year$sel_yr_dif~sel_year$method_ID,
+        ylab = "(Planting Year - Selected Year)",
+        xlab = "Method",
+        col = "lightblue")
+dev.off()
+
+                                               
 
                                                
 
