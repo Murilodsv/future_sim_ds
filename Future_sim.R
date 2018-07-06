@@ -1294,5 +1294,61 @@ for(out in unique(m_df$sccan_out)){
   dev.off()
   
 }
+                                               
+                                               
+
+
+for(out in unique(m_df$sccan_out)){
+  
+  for(m in unique(m_df$method_ID)){
+
+    
+    png(paste("RMSE_method_",m,"_",out,".png",sep=""),units="in",width=20,height=12,pointsize=18,res=300)
+    
+l_y = unique(m_df$nyr[m_df$sccan_out==out & m_df$method_ID == m])
+
+l_y = sort(l_y, decreasing = T)
+#--- Colors pallete
+colors = heat.colors(length(l_y), alpha = 1)
+
+for(y in l_y){
+  
+  p_df = data.frame(tdap   = m_df$tdap[m_df$sccan_out==out & m_df$method_ID == m & m_df$nyr == y],
+                    rmse   = m_df$rmse[m_df$sccan_out==out & m_df$method_ID == m & m_df$nyr == y])
+  
+  p_df = p_df[order(p_df$tdap), ]
+  
+  if(y == l_y[1]){
+    
+    plot(p_df$rmse~p_df$tdap,
+         ylim = c(0,max(m_df$rmse[m_df$sccan_out==out])),
+         col = colors[l_y[l_y==y]],
+         ylab = paste(lab_df$yl[lab_df$sccan==out]," Error ",lab_df$ul[lab_df$sccan==out],sep=""),
+         xlab = "Season Day of Start Prediction (DAP)")  
+  }else{
+    lines(p_df$rmse~p_df$tdap,col = colors[l_y[l_y==y]])  
+  }
+  
+  
+}
+
+legend("topright",
+       inset = 0.01,
+       title = paste("N years (",m,")",sep=""),
+       legend =  l_y,
+       lty = 1,
+       col = colors,
+       bg = "white",
+       cex = 0.6,
+       box.lty = 1)
+
+dev.off()
+
+  }
+  
+}
+                                               
+
+                                               
 
 
