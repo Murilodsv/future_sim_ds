@@ -1186,7 +1186,7 @@ for(out in unique(m_df$sccan_out)){
     
     dev.off()
     
-    if(m == unique(m_df$method_ID)[1] & out == unique(m_df$sccan_out)){
+    if(m == unique(m_df$method_ID)[1] & out == unique(m_df$sccan_out)[1]){
       bp_m_df = data.frame(tdap     = as.numeric(bp$names),
                          output     = out,
                          method     = m,
