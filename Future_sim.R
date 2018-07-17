@@ -7,31 +7,64 @@
 #------ 2) Simulate all years without modifing wth and pick the best match between the current year simulations and past years
 #------ 3) Uses best fit wth data between rainfall normal and all other wth
 
-#--- Murilo Vianna (Jun-2018)
+#--- Murilo Vianna (Jul-2018)
 
 wd            ="C:/Users/PC-600/Dropbox (Farmers Edge)/MuriloVianna/Modeling/Future_Sim/Future_sim_v1"
 
-xfile_mwth    = "FUWE0001.SCX"
-xfile_unmod   = "FUWE0002.SCX"
-xfile_bm      = "FUWE0003.SCX"
-ds_v          = 47
-crop          = "Sugarcane"
-perfchart     = T # save models performace charts?
-wth_orig      = "SPPI"
-wth_nm        = "PIFW"
-wth_bm        = "PIBM" #--- best match (solomon)
-sc_out        = "smfmd"#"su.fmd"#
-nmonths       = 12 #--- size on normal year
-planting_doy  = 225 # from xfile
-harvest_doy   = 225
-planting_year = 2008# from xfile
-outidx        = "rmse"
+xfile_mwth    = "FUWE0001.SCX"      # Modified WTH
+xfile_unmod   = "FUWE0002.SCX"      # Unmodified WTH
+xfile_bm      = "FUWE0003.SCX"      # Best fit (BF) normal rainfall
+ds_v          = 47                  # DSSAT version
+crop          = "Sugarcane"         # Crop used
+plantgro_fh   = "PlantGro_Head.csv" # A csv file with original PlantGro output names and converted names for R (This is necessary because R do not accept some special characters as vector label, such as # and %)
+perfchart     = T                   # Save models performace charts?
+plot_best_wth = T                   # Save charts of perfromace (normal year ~ Best year) for Solomon's method? 
+wth_orig      = "SPPI"              # Name of original WTH files
+wth_nm        = "PIFW"              # Name of modified WTH files 
+wth_bm        = "PIBM"              # Name of best best fit normal rainfall (Solomon method)
+l_sc_out      = c("smfmd")#,        # Name of the outputs to be analysed (as given in the plantgro_fh)
+                #  "su.fmd",
+                #  "shtd")
+planting_year_init_f  = 2008        # Planting Year
+harvesting_year_init_f= 2009        # Harvesting Year
+planting_doy  = 225                 # Planting doy
+harvest_doy   = 225                 # Harvesting doy
+nyears        = 10                  # Number of years to be used for the "normal" year method
+outidx        = "rmse"              # Statistical index to select the best fit (see mperf function)
+l_today_dap   = seq(10,             # list of days after planting steps that will be considered the "today dap" for methods evaluation
+                    360,
+                    by = 10)
+wth_dcomp = "RAIN"                  # The meteorological variable to be used in the Solomon's method Warning:CASE SENSITIVE 
 
-l_sc_out = c("smfmd","su.fmd")
+#--- Replicate for past years? 
+#--- Reduce one year and consider the reduced year as the current year
+#--- Note that the series starts on 1979 so to ensure that the entire range "nyears" are included
+#--- in all replications do not set init_wth_series_yr before your series possible harvesting!
+#--- If you do not want to replicate across years set the below logical (replicate_py) to False
+replicate_py        = T
+init_wth_series_yr  = 1997
 
-planting_year_init    = 1979
-planting_year_init_f  = 2008
-harvesting_year_init  = 1980
+#------------------------------------------------------------------
+#-----------------------------------
+#---debug
+o = "smfmd"
+py = l_py[2]
+tdap = 150
+plim = c(0, 160)
+
+plot(deb_out_orig$TMAX[deb_out_orig$year==2007 |deb_out_orig$year==2008])
+points(deb_out_rbf$TMAX, col = "red")
+
+#-----------------------------------
+
+
+#--- code init
+#--- replicate across years?
+if(replicate_py){
+  replicate_across_years_until = init_wth_series_yr + nyears   #
+}else{
+  replicate_across_years_until = planting_year_init_f
+}
 
 #--- load functions
 source(paste(wd,"/Future_sim_f.R",sep=""))
@@ -39,52 +72,71 @@ source(paste(wd,"/Future_sim_f.R",sep=""))
 for(o in l_sc_out){
   
   sc_out = o
-  l_py = seq(planting_year_init_f,1982)
+  
+  l_py = seq(planting_year_init_f,replicate_across_years_until)
 
   for(py in l_py) {
     
-    planting_year = py
-    l_today_dap = seq(10, 360, by = 10)
+    dyr_f = harvesting_year_init_f - planting_year_init_f # nyears of crop season (sugarcane can have more than 1 year or in BRA crop season is in the end of year)
+    planting_year     = py
+    harvesting_year   = planting_year + dyr_f
+    
+    planting_year_init    = planting_year - nyears
+    harvesting_year_init  = harvesting_year - nyears
     
     for (tdap in l_today_dap) {
       
       message(paste("Running ", ":", tdap, "Planting year", py))
-      today_dap     = tdap
+      today_dap       = tdap
+      today_dap_date  = as.Date(paste0(planting_year, "-01-01")) + planting_doy + today_dap - 1
+      planting_date   = as.Date(paste0(planting_year, "-01-01")) + planting_doy - 1
       
-      #------------------------------------------------------------------------------------#
-      #--- Create "future" wth using past wth data from today_dap untill havesting date ---#
-      #------------------------------------------------------------------------------------
+      #----------------------------#
+      #--- Read WTH base file   ---#
+      #----------------------------#
       
       #--- list original wth files
       l_wth = dir("C:/DSSAT47/Weather")
-      
       lwth_df = data.frame(wthfile = l_wth[substr(l_wth, 1, 4) == wth_orig],
-                           year    = as.numeric(paste("20", substr(l_wth[substr(l_wth, 1, 4) ==
-                                                                           wth_orig], 5, 6), sep = "")))
+                           year    = as.numeric(paste("20", substr(l_wth[substr(l_wth, 1, 4) ==wth_orig], 5, 6), sep = "")))
       
+      #--- considering that WTH filenames follows DSSAT format and years that are higher than today 
+      #--- are data from last century (e.g. SPPI7801, the 78 state for 1978 and not 2078)
       lwth_df$year[lwth_df$year > format(Sys.Date(), "%Y")] = lwth_df$year[lwth_df$year > format(Sys.Date(), "%Y")] - 100
-      
       lwth_df$wthfile_new = gsub(wth_orig, wth_nm, lwth_df$wthfile)
       lwth_df$wthfile_bm  = gsub(wth_orig, wth_bm, lwth_df$wthfile)
       
       #--- sort by year
       lwth_df = lwth_df[order(lwth_df$year), ]
       
-      #--- wth file head
-      wth_head = readLines(paste("C:/DSSAT47/Weather/", lwth_df$wthfile[1], sep =
-                                   ""),
-                           n = 5)
+      #--- find the header rownumber end (as "@DATE") and the number of meteorological variables
+      rdhead = data.frame(data = readLines(paste("C:/DSSAT47/Weather/", lwth_df$wthfile[1], sep ="")),
+                         h    = F)
+      rdhead$h[substr(rdhead$data,1,5)=="@DATE"] = T
+      rhead     = as.numeric(rownames(rdhead[rdhead$h,]))
+      nwth_var  = length(read.table(text = as.character(rdhead$data[rhead+1])))
+      var_lab   = read.table(text = as.character(rdhead$data[rhead]))
+      var_lab[,1] = gsub("@","",var_lab[,1])
+      vlabels = ""
       
-      #--- replace with the new aws name
+      for(v in 1:nwth_var) {vlabels[v]   = as.character(var_lab[1,v])}
+      
+      #--- wth file head
+      wth_head = readLines(paste0("C:/DSSAT47/Weather/", lwth_df$wthfile[1]),
+                           n = rhead)
+      
+      #--- replace with the new aws name ID
       wth_head = gsub(wth_orig, wth_nm, wth_head)
       
       #--- read original wth files
       for (fwth in lwth_df$wthfile) {
-        wth = read.table(paste("C:/DSSAT47/Weather/", fwth, sep = ""), skip = 5)
-        wth = wth[, 1:5]
-        colnames(wth) = c("DATE", "SRAD", "TMAX", "TMIN", "RAIN")
+        wth = read.table(paste("C:/DSSAT47/Weather/", fwth, sep = ""),
+                         skip = rhead,
+                         colClasses = c("character",rep("numeric",nwth_var-1)))
+        wth = wth[, 1:nwth_var]
+        colnames(wth) = vlabels
         
-        wth$year    = lwth_df$year[lwth_df$wthfile == fwth]
+        wth$year = lwth_df$year[lwth_df$wthfile==fwth]
         
         if (fwth == lwth_df$wthfile[1]) {
           wth_df = data.frame(wth)
@@ -93,40 +145,40 @@ for(o in l_sc_out){
           wth_df = rbind(wth_df, wth)
           
         }
-        
       }
       
       #--- compute doy from date
-      wth_df$doy = wth_df$DATE
+      wth_df$doy = as.numeric(substr(wth_df$DATE,3,5))
       
-      if (length(wth_df$doy[wth_df$DATE > 1000 & wth_df$DATE < 10000]) > 0) {
-        wth_df$doy[wth_df$DATE > 1000 &
-                     wth_df$DATE < 10000] = as.numeric(substr(wth_df$DATE[wth_df$DATE > 1000 &
-                                                                            wth_df$DATE < 10000], 2, 4))
-      }
+      #--- compute Gregorian date using function YYDOY
+      wth_df$date_greg = YYDOY(wth_df$DATE,F,1900)
+      wth_df$date_greg[wth_df$year>1999] = YYDOY(wth_df$DATE[wth_df$year>1999],F,2000)
       
-      if (length(wth_df$doy[wth_df$DATE >= 10000]) > 0) {
-        wth_df$doy[wth_df$DATE >= 10000] = as.numeric(substr(wth_df$DATE[wth_df$DATE >= 10000], 3, 5))
-      }
+      #-----------------------------------------------#
+      #--- Separate this year simulations wth data ---#
+      #-----------------------------------------------#
       
-      #--- Re-build DSSAT DATE format (YYDOY)
-      wth_df$DATE_FMT = paste(substr(wth_df$year, 3, 4),
-                              sprintf("%003.0f", wth_df$doy),
-                              sep = "")
+      wth_cy = wth_df[wth_df$date_greg >= planting_date &
+                      wth_df$date_greg <= today_dap_date, ]
       
-      #--- Separate this year simulations wth data
-      wth_cy = wth_df[wth_df$year > planting_year |
-                        (wth_df$year == planting_year &
-                           wth_df$doy >= planting_doy), ][1:today_dap, ]
+      #-----------------------------------------------#
       
-      #--- replace in all time-series
-      for (yr in unique(wth_df$year)) {
-        wth_df_yr = wth_df[wth_df$year == yr, ]
+      #------------------------------------------------------------------------------------#
+      #--- Create "future" wth using past wth data from today_dap untill havesting date ---#
+      #------------------------------------------------------------------------------------
+      
+      #--- replace in time-series 
+      l_yrs = unique(wth_df$year[wth_df$year>=planting_year_init & wth_df$year<=harvesting_year])
+      
+      #--- Note that this replacement only works for crop seasons <= 365
+      for (yr in l_yrs) {
+        wth_df_yr = wth_df[wth_df$year == yr,]
+        wth_df_yr$DATE_FMT = wth_df_yr$DATE
         
         m_doy = data.frame(doy = wth_df_yr$doy)
         m_doy = merge(m_doy, wth_cy, by = "doy")
         
-        wth_df_yr[wth_df_yr$doy %in% m_doy$doy, c("DATE", "SRAD", "TMAX", "TMIN", "RAIN")] = m_doy[, c("DATE", "SRAD", "TMAX", "TMIN", "RAIN")]
+        wth_df_yr[wth_df_yr$doy %in% m_doy$doy, vlabels] = m_doy[, vlabels]
         
         out_wth = data.frame(
           date = wth_df_yr$DATE_FMT,
@@ -135,7 +187,6 @@ for(o in l_sc_out){
           tmin = sprintf("%5.1f", wth_df_yr$TMIN),
           rain = sprintf("%5.1f", wth_df_yr$RAIN)
         )
-        
         
         
         write(
@@ -156,10 +207,10 @@ for(o in l_sc_out){
           quote = F
         )
         
-        if (yr == unique(wth_df$year)[1]) {
-          deb_out = wth_df_yr
+        if (yr == l_yrs[1]) {
+          deb_out_orig = wth_df_yr
         } else{
-          deb_out = rbind(deb_out, wth_df_yr)
+          deb_out_orig = rbind(deb_out_orig, wth_df_yr)
         }
         
         message(
@@ -177,7 +228,6 @@ for(o in l_sc_out){
       }
       #------------------------------------------------------------------------------------
       
-      
       #------------------------------------------------------------------------------------#
       #------------------------------ Run for all modified wth ----------------------------#
       #------------------------------------------------------------------------------------
@@ -194,6 +244,7 @@ for(o in l_sc_out){
       xfile_all_mwth = gsub("<hyr>" ,
                             substr(harvesting_year_init, 3, 4) ,
                             xfile_all_mwth)
+      
       xfile_all_mwth = gsub("<hdoy>", sprintf("%003.0f", harvest_doy)   , xfile_all_mwth)
       
       xfile_all_mwth = gsub("<station>", wth_nm, xfile_all_mwth)
@@ -243,7 +294,7 @@ for(o in l_sc_out){
       setwd(wd)
       
       #--- PlantGro Head
-      pgro_head = read.csv("PlantGro_Head.csv")
+      pgro_head = read.csv(plantgro_fh)
       
       #--- Note: writing file is required to speed up! (for some reason is faster than reading directly from plant_lines variable)
       write.table(
@@ -296,7 +347,7 @@ for(o in l_sc_out){
       #--- store future "observed" data
       plant_orig = plantgro_cy
       
-      #--- compute bp limits
+      #--- compute bp limits for future data
       bp = boxplot(plantgro_s[plantgro_s$dap > today_dap, sc_out] ~
                      plantgro_s$dap[plantgro_s$dap > today_dap],
                    plot = F)
@@ -381,7 +432,7 @@ for(o in l_sc_out){
       setwd(wd)
       
       #--- PlantGro Head
-      pgro_head = read.csv("PlantGro_Head.csv")
+      pgro_head = read.csv(plantgro_fh)
       
       #--- Note: writing file is required to speed up! (for some reason is faster than reading directly from plant_lines variable)
       write.table(
@@ -427,15 +478,13 @@ for(o in l_sc_out){
       )
       
       obs_run = unique(plant_unmod$run)[length(unique(plant_unmod$run))]
-      plantgro_s   = plant_unmod[plant_unmod$run != obs_run, ]
-      
       
       #--- compute beste agreement between output past years simulations and current year until today_dap
       obs = plantgro_cy[plantgro_cy$dap <= today_dap, sc_out]
       
       message(
         paste(
-          "Compute beste agreement between output past years simulations and current year until today_dap",
+          "Compute best agreement between output past years simulations and current year until today_dap",
           ":",
           tdap,
           "Planting year",
@@ -520,119 +569,110 @@ for(o in l_sc_out){
       
       #------------------------------------------------------------------------------------#
       #------- Run for the best match between normal rainfall year and all years ----------#
-      #------------------------------------------------------------------------------------
+      #------------------------------------------------------------------------------------#
       
       message(paste("Running best normal rainfall", ":", tdap, "Planting year", py))
       #--- use the best fit of normal rain and previous years (proposed by solomon)
       
-      #--- select only past years
+      #--- select only past years within the WSI range (10 years -> nyears)
       wth_df_bm = wth_df
-      wth_df_bm$date_greg = as.Date(paste(wth_df_bm$year, "-01-01", sep = "")) + (wth_df_bm$doy - 1)
       wth_df_bm$month = format(as.Date(wth_df_bm$date_greg), "%m")
       
-      wth_df_bm = wth_df_bm[wth_df_bm$date_greg < (as.Date(paste(planting_year, "-01-01", sep =
-                                                                   ""))), ]
+      #using only data before the planting year (Maybe using data before "today" for the comparing could yield better results)
+      wth_df_bm = wth_df_bm[wth_df_bm$date_greg < (as.Date(paste(planting_year, "-01-01", sep =""))) &
+                              wth_df_bm$year >= (planting_year - nyears), ]
+      
+      #--- using data before "today" date
+      #today_dap_date = as.Date(paste(planting_year, "-01-01", sep ="")) + planting_doy + today_dap - 1
+      
+      
+      #--- selecting only data that are from full months to avoid incomplete monthly rainfall values
+      #wth_df_bm = wth_df_bm[wth_df_bm$date_greg < (as.Date(paste(format(as.Date(today_dap_date), "%Y-%m"), "-01", sep =
+      #                                                             ""))), ]
+      
+      wth_df_bm_feb29 = data.frame(wth_df_bm,m_d = format(wth_df_bm$date_greg,"%m-%d"))
+      wth_df_bm_feb29 = wth_df_bm_feb29[wth_df_bm_feb29$m_d=="02-29",]
+        
+      feb29 = data.frame(TMAX  = mean(wth_df_bm_feb29$TMAX),
+                         TMIN  = mean(wth_df_bm_feb29$TMIN),
+                         SRAD  = mean(wth_df_bm_feb29$SRAD),
+                         RAIN  = mean(wth_df_bm_feb29$RAIN))
       
       #--- monthly means
       month_wth = data.frame(
         month = unique(wth_df_bm[, c("month", "year")])[1],
         year  = unique(wth_df_bm[, c("month", "year")])[2],
-        tmax  = aggregate(TMAX ~ month + year, data = wth_df_bm, mean)$TMAX,
-        tmin  = aggregate(TMIN ~ month + year, data = wth_df_bm, mean)$TMIN,
-        srad  = aggregate(SRAD ~ month + year, data = wth_df_bm, mean)$SRAD,
-        rain  = aggregate(RAIN ~ month + year, data = wth_df_bm, sum)$RAIN
+        TMAX  = aggregate(TMAX ~ month + year, data = wth_df_bm, mean)$TMAX,
+        TMIN  = aggregate(TMIN ~ month + year, data = wth_df_bm, mean)$TMIN,
+        SRAD  = aggregate(SRAD ~ month + year, data = wth_df_bm, mean)$SRAD,
+        RAIN  = aggregate(RAIN ~ month + year, data = wth_df_bm, sum)$RAIN
       )
       
       #--- normal
       normal_wth = data.frame(
-        month = seq(1, 12),
-        tmax  = aggregate(TMAX ~ month, data = wth_df_bm, mean)$TMAX,
-        tmin  = aggregate(TMIN ~ month, data = wth_df_bm, mean)$TMIN,
-        srad  = aggregate(SRAD ~ month, data = wth_df_bm, mean)$SRAD,
-        rain  = aggregate(rain ~ month, data = month_wth, mean)$rain
+        month = unique(month_wth$month),
+        TMAX  = aggregate(TMAX ~ month, data = wth_df_bm, mean)$TMAX,
+        TMIN  = aggregate(TMIN ~ month, data = wth_df_bm, mean)$TMIN,
+        SRAD  = aggregate(SRAD ~ month, data = wth_df_bm, mean)$SRAD,
+        RAIN  = aggregate(RAIN ~ month, data = month_wth, mean)$RAIN
       )
-      
-      starting_month = format(as.Date(paste(planting_year, "-01-01", sep = "")) + (planting_doy - 1), "%m")
-      
-      #--- tag number of "runs"
-      r = 0
-      rsim = 0
-      v_run = rep(0, length(month_wth$month[month_wth$year <= planting_year]))
-      v_mon = rep(0, length(month_wth$month[month_wth$year <= planting_year]))
-      
-      for (m in 1:length(month_wth$month)) {
-        if (m >= as.numeric(starting_month)) {
-          if (m == as.numeric(starting_month)) {
-            rsim = 1
-          }
-          r = r + 1
-          if (r > nmonths) {
-            r = 1
-            rsim = rsim + 1
-          }
-        }
-        v_run[m] = rsim
-        v_mon[m] = r
-      }
-      
-      #--- index in monthly basis
-      v_nor = rep(0, length(normal_wth$month))
-      v_nor[normal_wth$month[normal_wth$month == as.numeric(starting_month)]] = 1
-      v_nor[normal_wth$month[normal_wth$month > as.numeric(starting_month)]]  = normal_wth$month[normal_wth$month >
-                                                                                                   as.numeric(starting_month)] - as.numeric(starting_month) + 1
-      v_nor[normal_wth$month[normal_wth$month < as.numeric(starting_month)]]  = normal_wth$month[normal_wth$month <
-                                                                                                   as.numeric(starting_month)] - as.numeric(starting_month) + 1 + nmonths
-      
-      #--- use rain in the comparison
-      wth_dcomp = "rain"
-      
-      #--- set normal as "observed"
-      obs = data.frame(mrun = v_nor,
-                       rain = normal_wth[, wth_dcomp])
-      
-      #--- add indexes
-      month_wth$v_run = v_run
-      month_wth$mrun  = v_mon
-      
-      message(paste(
-        "Computing best RMSE on normal rainfall",
-        ":",
-        tdap,
-        "Planting year",
-        py
-      ))
-      
-      #--- compute rmse of (normal x each year)
-      for (run in unique(v_run[v_run > 0])) {
-        if (length(v_run[v_run == run]) < nmonths) {
-          next
-        }
-        perf_data_df = obs
-        perf_data_df = merge(perf_data_df, month_wth[month_wth$v_run == run, ], by = "mrun")
-        if (run == unique(v_run[v_run > 0])[1]) {
-          perf_wth = mperf(perf_data_df$rain.y,
-                           perf_data_df$rain.x,
-                           run,
+        
+      #--- uses Solomon method but with RMSE as the best agreement indicator
+        
+        #--- use rain in the comparison
+        month_wth$month = as.numeric(month_wth$month)
+        
+        obs_normal = normal_wth[,c("month",wth_dcomp)]
+        for(y in unique(wth_df_bm$year)){
+          
+          sim_match = merge(obs_normal,month_wth[month_wth$year==y,c("month",wth_dcomp)], by = "month")
+          colnames(sim_match) = c("month","obs","sim")  
+          
+          if(y == unique(wth_df_bm$year)[1]){
+          perf_wth = mperf(sim_match$sim,
+                           sim_match$obs,
+                           y,
                            F,
                            outidx)
-        } else{
-          perf_wth = rbind(perf_wth,
-                           mperf(
-                             perf_data_df$rain.y,
-                             perf_data_df$rain.x,
-                             run,
+          }else{
+            perf_wth = rbind(perf_wth,mperf(sim_match$sim,
+                             sim_match$obs,
+                             y,
                              F,
-                             outidx
-                           ))
+                             outidx))
+            
+          }
         }
         
-      }
+      
       
       #--- sort by outidx
-      perf_wth = perf_wth[order(perf_wth$rmse), ]
+      perf_wth = perf_wth[order(perf_wth$rmse),]
       
+      #--- Select the best fit year (min(rmse))
+      best_wth = month_wth[month_wth$year == perf_wth$vnam[1],]
       
-      best_wth = month_wth[month_wth$v_run == perf_wth$vnam[1], ]
+      if(plot_best_wth){
+        png(
+          paste("Perf_Normal_BFyear_",sc_out,"_todaydap_",today_dap,"_pyr_",planting_year,".png",sep = ""),
+          units = "in",
+          width = 12,
+          height = 12,
+          pointsize = 18,
+          res = 300)
+        
+        par(mfrow = c(1, 1),
+          mar = c(4.5, 4.5, 0.5, 0.5),
+          oma = c(0, 0, 0, 0))
+        
+        mperf(best_wth$RAIN,
+            obs_normal$RAIN,
+            paste0(wth_dcomp,": Year ",unique(best_wth$year)),
+            T,
+            outidx)
+      
+        dev.off()
+      }
       
       message(
         paste(
@@ -648,13 +688,44 @@ for(o in l_sc_out){
       #--- wth file head
       wth_head = readLines(paste("C:/DSSAT47/Weather/", lwth_df$wthfile[1], sep =
                                    ""),
-                           n = 5)
+                           n = rhead) # wth file head
       
       wth_head = gsub(wth_orig, wth_bm, wth_head)
       
       #--- replace in all time-series
-      for (yr in unique(best_wth$year)) {
-        wth_df_yr = wth_df_bm[wth_df_bm$year == yr, ]
+      best_wth_data = wth_df_bm[wth_df_bm$year == unique(best_wth$year),]
+      
+      #--- replace in time-series 
+      l_yrs = seq(planting_year,harvesting_year)
+      
+      #--- Note that this replacement only works for crop seasons <= 365
+      for (yr in l_yrs) {
+        wth_df_yr = wth_df[wth_df$year == yr,]
+        if(length(wth_df_yr$DATE) == length(best_wth_data$DATE)){
+          wth_df_yr = best_wth_data[,colnames(wth_df)]
+        }else{
+          #leap year in one of selected years
+          if(length(wth_df_yr$DATE) == 366){
+            wth_lp_yr = data.frame(m_d = format(wth_df_yr$date_greg,"%m-%d"))
+            wth_df_yr = merge(wth_lp_yr,data.frame(best_wth_data,m_d=format(best_wth_data$date_greg,"%m-%d")), by = "m_d", all.x = T)
+            wth_df_yr[is.na(wth_df_yr$DATE),vlabels[2:length(vlabels)]] = feb29[1,vlabels[2:length(vlabels)]]
+            wth_df_yr[,c("DATE","year","doy","date_greg")] = wth_df[wth_df$year == yr,c("DATE","year","doy","date_greg")]
+            wth_df_yr$month[60] = "02"
+            wth_df_yr$m_d = NULL
+          }else{
+            wth_lp_yr = data.frame(m_d = format(wth_df_yr$date_greg,"%m-%d"))
+            wth_df_yr = merge(wth_lp_yr,data.frame(best_wth_data,m_d=format(best_wth_data$date_greg,"%m-%d")), by = "m_d")
+            wth_df_yr[,c("DATE","year","doy","date_greg")] = wth_df[wth_df$year == yr,c("DATE","year","doy","date_greg")]
+            wth_df_yr$m_d = NULL
+          }
+        }
+        
+        wth_df_yr$DATE_FMT = wth_df$DATE[wth_df$year == yr]
+        
+        m_doy = data.frame(doy = wth_df_yr$doy)
+        m_doy = merge(m_doy, wth_cy, by = "doy")
+        
+        wth_df_yr[wth_df_yr$doy %in% m_doy$doy, vlabels] = m_doy[, vlabels]
         
         out_wth = data.frame(
           date = wth_df_yr$DATE_FMT,
@@ -664,9 +735,11 @@ for(o in l_sc_out){
           rain = sprintf("%5.1f", wth_df_yr$RAIN)
         )
         
+        
         write(
           wth_head,
-          file = paste("C:/DSSAT47/Weather/", lwth_df$wthfile_bm[lwth_df$year == yr], sep = ""),
+          file = paste("C:/DSSAT47/Weather/", lwth_df$wthfile_bm[lwth_df$year ==
+                                                                    yr], sep = ""),
           append = F,
           sep = ""
         )
@@ -674,7 +747,7 @@ for(o in l_sc_out){
         write.table(
           out_wth,
           file =  paste("C:/DSSAT47/Weather/", lwth_df$wthfile_bm[lwth_df$year ==
-                                                                    yr], sep = ""),
+                                                                     yr], sep = ""),
           append = T,
           row.names = F,
           col.names = F,
@@ -683,8 +756,9 @@ for(o in l_sc_out){
         
         message(
           paste(
-            "Replaced in WTH file",
+            "WTH file:",
             lwth_df$wthfile_bm[lwth_df$year == yr],
+            "Created",
             ":",
             tdap,
             "Planting year",
@@ -694,13 +768,12 @@ for(o in l_sc_out){
         
       }
       
-      
       message(paste("Create Xfile", ":", tdap, "Planting year", py))
       
       #--- create Xfile
       xfile_bm_full  = readLines(paste(wd, "/FUWE0001_master.SCX", sep = ""))
       
-      pyr = best_wth$year[1]
+      pyr = planting_year
       
       xfile_bm_full = gsub("<pyr>" , substr(pyr, 3, 4)    , xfile_bm_full)
       xfile_bm_full = gsub("<pdoy>", sprintf("%003.0f", planting_doy) , xfile_bm_full)
@@ -755,7 +828,7 @@ for(o in l_sc_out){
       setwd(wd)
       
       #--- PlantGro Head
-      pgro_head = read.csv("PlantGro_Head.csv")
+      pgro_head = read.csv(plantgro_fh)
       
       #--- Note: writing file is required to speed up! (for some reason is faster than reading directly from plant_lines variable)
       write.table(
@@ -993,7 +1066,7 @@ for(o in l_sc_out){
           "Future predictions (Median of past years)",
           paste(
             "Future predictions (BF Normal Rainfall, Yr = ",
-            plant_bm$year[1],
+            best_wth$year[1],
             ")",
             sep = ""
           ),
@@ -1164,7 +1237,7 @@ for(out in unique(m_df$sccan_out)){
     png(paste("BP_RMSE_",m,"_",out,".png",sep=""),units="in",width=20,height=12,pointsize=18,res=300)
     
     bp =    boxplot(m_df$rmse[m_df$method_ID==m & m_df$sccan_out==out]~m_df$tdap[m_df$method_ID==m & m_df$sccan_out==out],
-                    ylim = c(0,max(m_df$rmse[m_df$sccan_out==out])),
+                    ylim = c(0,max(m_df$rmse)),
                     ylab = paste(lab_df$yl[lab_df$sccan==out]," Error ",lab_df$ul[lab_df$sccan==out],sep=""),
                     xlab = "Season Day of Prediction Start (DAP)",
                     plot = T,
@@ -1186,7 +1259,7 @@ for(out in unique(m_df$sccan_out)){
     
     dev.off()
     
-    if(m == unique(m_df$method_ID)[1] & out == unique(m_df$sccan_out)[1]){
+    if(m == unique(m_df$method_ID)[1] & out == unique(m_df$sccan_out)){
       bp_m_df = data.frame(tdap     = as.numeric(bp$names),
                          output     = out,
                          method     = m,
@@ -1294,76 +1367,5 @@ for(out in unique(m_df$sccan_out)){
   dev.off()
   
 }
-                                               
-                                               
-
-
-for(out in unique(m_df$sccan_out)){
-  
-  for(m in unique(m_df$method_ID)){
-
-    
-    png(paste("RMSE_method_",m,"_",out,".png",sep=""),units="in",width=20,height=12,pointsize=18,res=300)
-    
-l_y = unique(m_df$nyr[m_df$sccan_out==out & m_df$method_ID == m])
-
-l_y = sort(l_y, decreasing = T)
-#--- Colors pallete
-colors = heat.colors(length(l_y), alpha = 1)
-
-for(y in l_y){
-  
-  p_df = data.frame(tdap   = m_df$tdap[m_df$sccan_out==out & m_df$method_ID == m & m_df$nyr == y],
-                    rmse   = m_df$rmse[m_df$sccan_out==out & m_df$method_ID == m & m_df$nyr == y])
-  
-  p_df = p_df[order(p_df$tdap), ]
-  
-  if(y == l_y[1]){
-    
-    plot(p_df$rmse~p_df$tdap,
-         ylim = c(0,max(m_df$rmse[m_df$sccan_out==out])),
-         col = colors[l_y[l_y==y]],
-         ylab = paste(lab_df$yl[lab_df$sccan==out]," Error ",lab_df$ul[lab_df$sccan==out],sep=""),
-         xlab = "Season Day of Start Prediction (DAP)")  
-  }else{
-    lines(p_df$rmse~p_df$tdap,col = colors[l_y[l_y==y]])  
-  }
-  
-  
-}
-
-legend("topright",
-       inset = 0.01,
-       title = paste("N years (",m,")",sep=""),
-       legend =  l_y,
-       lty = 1,
-       col = colors,
-       bg = "white",
-       cex = 0.6,
-       box.lty = 1)
-
-dev.off()
-
-  }
-  
-}
-                                               
-                                               
-                                               
-m2_df$sel_yr_dif = m2_df$pyr - m2_df$sel_yr
-m3_df$sel_yr_dif = m3_df$pyr - m3_df$sel_yr
-m4_df$sel_yr_dif = m4_df$pyr - (m4_df$sel_yr1 + m4_df$sel_yr2) / 2
-
-sel_year = rbind(m2_df[,c("method_ID","sel_yr_dif")],m3_df[,c("method_ID","sel_yr_dif")],m4_df[,c("method_ID","sel_yr_dif")])
-png(paste("Sel_yr.png",sep=""),units="in",width=12,height=12,pointsize=18,res=300)
-boxplot(sel_year$sel_yr_dif~sel_year$method_ID,
-        ylab = "(Planting Year - Selected Year)",
-        xlab = "Method",
-        col = "lightblue")
-dev.off()
-
-                                               
-
-                                               
 
 
