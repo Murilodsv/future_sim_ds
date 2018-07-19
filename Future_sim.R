@@ -19,12 +19,13 @@ crop          = "Sugarcane"         # Crop used
 plantgro_fh   = "PlantGro_Head.csv" # A csv file with original PlantGro output names and converted names for R (This is necessary because R do not accept some special characters as vector label, such as # and %)
 perfchart     = T                   # Save models performace charts?
 plot_best_wth = T                   # Save charts of perfromace (normal year ~ Best year) for Solomon's method? 
+plot_best_sim = T                   # Save charts of the selected best past year simulations and the current year simulations until today_dap
 wth_orig      = "SPPI"              # Name of original WTH files
 wth_nm        = "PIFW"              # Name of modified WTH files 
 wth_bm        = "PIBM"              # Name of best best fit normal rainfall (Solomon method)
-l_sc_out      = c("smfmd")#,        # Name of the outputs to be analysed (as given in the plantgro_fh)
-                #  "su.fmd",
-                #  "shtd")
+l_sc_out      = c("smfmd",          # Name of the outputs to be analysed (as given in the plantgro_fh)
+                  "su.fmd",
+                  "shtd")
 planting_year_init_f  = 2008        # Planting Year
 harvesting_year_init_f= 2009        # Harvesting Year
 planting_doy  = 225                 # Planting doy
@@ -42,21 +43,9 @@ wth_dcomp = "RAIN"                  # The meteorological variable to be used in 
 #--- in all replications do not set init_wth_series_yr before your series possible harvesting!
 #--- If you do not want to replicate across years set the below logical (replicate_py) to False
 replicate_py        = T
-init_wth_series_yr  = 1997
+init_wth_series_yr  = 1990
 
 #------------------------------------------------------------------
-#-----------------------------------
-#---debug
-o = "smfmd"
-py = l_py[2]
-tdap = 150
-plim = c(0, 160)
-
-plot(deb_out_orig$TMAX[deb_out_orig$year==2007 |deb_out_orig$year==2008])
-points(deb_out_rbf$TMAX, col = "red")
-
-#-----------------------------------
-
 
 #--- code init
 #--- replicate across years?
@@ -480,7 +469,10 @@ for(o in l_sc_out){
       obs_run = unique(plant_unmod$run)[length(unique(plant_unmod$run))]
       
       #--- compute beste agreement between output past years simulations and current year until today_dap
-      obs = plantgro_cy[plantgro_cy$dap <= today_dap, sc_out]
+      obs = plant_orig[plant_orig$dap <= today_dap, sc_out]
+      
+      #--- separate the past years as simulated scenarios
+      plantgro_s = plant_unmod[plant_unmod$run!=obs_run,]
       
       message(
         paste(
@@ -498,7 +490,6 @@ for(o in l_sc_out){
                            plantgro_s$run == run, sc_out]
         
         vnam = paste(run)
-        
         if (run == unique(plant_unmod$run)[1]) {
           perf = mperf(sim, obs, vnam, F, p_idx)
         } else{
@@ -563,6 +554,57 @@ for(o in l_sc_out){
         py
       ))
       
+      if(plot_best_sim){
+        
+        png(
+          paste("Past_years_Sim_Method_",sc_out,"_todaydap_",today_dap,"_pyr_",planting_year,".png",sep = ""),
+          units = "in",
+          width = 12,
+          height = 12,
+          pointsize = 18,
+          res = 300)
+        
+        par(mfrow = c(1, 1),
+            mar = c(4.5, 4.5, 0.5, 0.5),
+            oma = c(0, 0, 0, 0))
+        
+        plot(obs, type = "l",lwd = 3,col="red",xlab = "Days After Planting",ylab = sc_out)
+        for(run in unique(plantgro_s$run)){
+          sim = plantgro_s[plantgro_s$dap <= today_dap &
+                             plantgro_s$run == run, sc_out]
+          lines(sim,col="grey")
+        }
+        lines(plantgro_s[plantgro_s$run==perf$vnam[1] & plantgro_s$dap <= today_dap,sc_out],
+              col = "blue")
+        lines(plant_unmod_bm_avg[plant_unmod_bm_avg$dap <= today_dap,sc_out],
+              col = "blue",
+              lty = 3)
+        
+        legend(
+          "topleft",
+          inset   = 0.02,
+          legend  = c(paste0("Current Data"),
+                      paste0("All Past Years (",planting_year_init,"-",harvesting_year-1,")"),
+                      paste0("Best Fit (",plant_unmod_bm$year[1],")"),
+                      paste0("Best Fit Average (",yr_b1," & ",yr_b2,")")),
+          col     = c("red",
+                      "grey",
+                      "blue",
+                      "blue"),
+          lt      = c(1,
+                      1,
+                      1,
+                      3),
+          lwd     = c(3,
+                      1,
+                      1.5,
+                      1.5),
+          bg      = "white",
+          cex     = 0.7,
+          box.lty = 1)
+        
+        dev.off()
+      }
       #------------------------------------------------------------------------------------
       
       
