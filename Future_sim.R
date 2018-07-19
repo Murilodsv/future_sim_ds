@@ -9,7 +9,7 @@
 
 #--- Murilo Vianna (Jul-2018)
 
-wd            ="C:/Users/PC-600/Dropbox (Farmers Edge)/MuriloVianna/Modeling/Future_Sim/Future_sim_v1"
+wd            ="C:/Murilo/future_sim"
 
 xfile_mwth    = "FUWE0001.SCX"      # Modified WTH
 xfile_unmod   = "FUWE0002.SCX"      # Unmodified WTH
@@ -43,7 +43,7 @@ wth_dcomp = "RAIN"                  # The meteorological variable to be used in 
 #--- in all replications do not set init_wth_series_yr before your series possible harvesting!
 #--- If you do not want to replicate across years set the below logical (replicate_py) to False
 replicate_py        = T
-init_wth_series_yr  = 1990
+init_wth_series_yr  = 1980
 
 #------------------------------------------------------------------
 
@@ -1262,9 +1262,9 @@ o   = "smfmd"
 yl  = "Stalk Fresh Mass"
 ul  = "(t ha-1)"
 
-lab_df = data.frame(sccan = c("smfmd","su.fmd"),
-                    yl = c("Stalk Fresh Mass", "Sucrose Content"),
-                    ul = c("(t ha-1)","(%)"))
+lab_df = data.frame(sccan = c("smfmd","su.fmd","shtd"),
+                    yl = c("Stalk Fresh Mass", "Sucrose Content","Stalk Height"),
+                    ul = c("(t ha-1)","(%)","(m)"))
 
 lab_df_m = data.frame(m  = c("m1","m2","m3","m4"),
                       yl = c("Median of past years",
